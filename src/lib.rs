@@ -3,7 +3,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use baseplug::{Plugin, ProcessContext};
+use baseplug::{Plugin, ProcessContext, WindowOpenResult, UIModel, Model, UIFloatParam};
+use baseview::{Size, WindowOpenOptions, WindowScalePolicy};
+use raw_window_handle::HasRawWindowHandle;
+
+use egui::CtxRef;
+use egui_baseview::{EguiWindow, Queue, RenderSettings, Settings};
 
 mod dsp;
 use dsp::{Allpass, DegradedDelay};
@@ -114,5 +119,111 @@ impl Plugin for Reverb {
         }
     }
 }
+
+impl baseplug::PluginUI for Reverb {
+    type Handle = ();
+
+    fn ui_size() -> (i16, i16) {
+        (500, 300)
+    }
+
+    fn ui_open(parent: &impl HasRawWindowHandle, model: <Self::Model as Model<Self>>::UI) -> WindowOpenResult<Self::Handle> {
+        let settings = Settings {
+            window: WindowOpenOptions {
+                title: String::from("egui-baseplug-examples gain"),
+                size: Size::new(Self::ui_size().0 as f64, Self::ui_size().1 as f64),
+                scale: WindowScalePolicy::SystemScaleFactor,
+            },
+            render_settings: RenderSettings::default(),
+        };
+
+        let state = State::new(model);
+
+        EguiWindow::open_parented(
+            parent,
+            settings,
+            state,
+            // Called once before the first frame. Allows you to do setup code and to
+            // call `ctx.set_fonts()`. Optional.
+            |_egui_ctx: &CtxRef, _queue: &mut Queue, _state: &mut State| {},
+            // Called before each frame. Here you should update the state of your
+            // application and build the UI.
+            |egui_ctx: &CtxRef, _queue: &mut Queue, state: &mut State| {
+                // Must be called on the top of each frame in order to sync values from the rt thread.
+                state.model.poll_updates();
+
+                let format_value = |value_text: &mut String, param: &UIFloatParam<_, _>| {
+                    *value_text = format!("{:.1} {}", param.unit_value(), param.unit_label());
+                };
+
+                let update_value_text = |value_text: &mut String, param: &UIFloatParam<_, _>| {
+                    if param.updated_by_host() {
+                        format_value(value_text, param)
+                    }
+                };
+
+                let param_slider = |ui: &mut egui::Ui, label: &str, value_text: &mut String, param: &mut UIFloatParam<_, _>| {
+                    ui.label(label);
+                    ui.label(value_text.as_str());
+
+                    // Use the normalized value of the param so we can take advantage of baseplug's value curves.
+                    //
+                    // You could opt to use your own custom widget if you wish, as long as it can operate with
+                    // a normalized range from [0.0, 1.0].
+                    let mut normal = param.normalized();
+                    if ui.add(egui::Slider::new(&mut normal, 0.0..=1.0)).changed() {
+                        param.set_from_normalized(normal);
+                        format_value(value_text, param);
+                    };
+                };
+
+                // Sync text values if there was automation.
+                update_value_text(&mut state.g_value, &state.model.g);
+                update_value_text(&mut state.damping_value, &state.model.damping);
+                update_value_text(&mut state.degrade_intensity_value, &state.model.degrade_intensity);
+                update_value_text(&mut state.degrade_speed_value, &state.model.degrade_speed);
+
+                egui::Window::new("egui-baseplug gain demo").show(&egui_ctx, |ui| {
+                    param_slider(ui, "sort of length", &mut state.g_value, &mut state.model.g);
+                    param_slider(ui, "damping", &mut state.damping_value, &mut state.model.damping);
+                    param_slider(ui, "degradation intensity", &mut state.degrade_intensity_value, &mut state.model.degrade_intensity);
+                    param_slider(ui, "Gain Right", &mut state.degrade_speed_value, &mut state.model.degrade_speed);
+                });
+
+                // TODO: Add a way for egui-baseview to send a closure that runs every frame without always
+                // repainting.
+                egui_ctx.request_repaint();
+            },
+        );
+
+        Ok(())
+    }
+
+    fn ui_close(mut handle: Self::Handle) {
+        // TODO: Close window once baseview gets the ability to do this.
+    }
+}
+
+struct State {
+    model: ReverbModelUI<Reverb>,
+
+    g_value: String,
+    damping_value: String,
+    degrade_intensity_value: String,
+    degrade_speed_value: String,
+}
+
+impl State {
+    pub fn new(model: ReverbModelUI<Reverb>) -> State {
+        State {
+            model,
+            g_value: String::new(),
+            damping_value: String::new(),
+            degrade_intensity_value: String::new(),
+            degrade_speed_value: String::new(),
+        }
+    }
+}
+
 
 baseplug::vst2!(Reverb, b"rvrb");
