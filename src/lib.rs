@@ -104,10 +104,10 @@ impl Plugin for Reverb {
             self.delay_three_l.set_feedback(model.g[i]);
             self.delay_four_l.set_feedback(model.g[i]);
 
-            self.delay_one_l.set_feedback(1.0 - model.damping[i]);
-            self.delay_two_l.set_feedback(1.0 - model.damping[i]);
-            self.delay_three_l.set_feedback(1.0 - model.damping[i]);
-            self.delay_four_l.set_feedback(1.0 - model.damping[i]);
+            self.delay_one_l.set_a(1.0 - model.damping[i]);
+            self.delay_two_l.set_a(1.0 - model.damping[i]);
+            self.delay_three_l.set_a(1.0 - model.damping[i]);
+            self.delay_four_l.set_a(1.0 - model.damping[i]);
 
             self.delay_one_l.set_amt(model.degrade_intensity[i] as i32);
             self.delay_two_l.set_amt(model.degrade_intensity[i] as i32);
@@ -128,10 +128,10 @@ impl Plugin for Reverb {
             self.delay_three_r.set_feedback(model.g[i]);
             self.delay_four_r.set_feedback(model.g[i]);
 
-            self.delay_one_r.set_feedback(1.0 - model.damping[i]);
-            self.delay_two_r.set_feedback(1.0 - model.damping[i]);
-            self.delay_three_r.set_feedback(1.0 - model.damping[i]);
-            self.delay_four_r.set_feedback(1.0 - model.damping[i]);
+            self.delay_one_r.set_a(1.0 - model.damping[i]);
+            self.delay_two_r.set_a(1.0 - model.damping[i]);
+            self.delay_three_r.set_a(1.0 - model.damping[i]);
+            self.delay_four_r.set_a(1.0 - model.damping[i]);
 
             self.delay_one_r.set_amt(model.degrade_intensity[i] as i32);
             self.delay_two_r.set_amt(model.degrade_intensity[i] as i32);
@@ -235,7 +235,7 @@ impl baseplug::PluginUI for Reverb {
                     param_slider(ui, "sort of length", &mut state.g_value, &mut state.model.g);
                     param_slider(ui, "damping", &mut state.damping_value, &mut state.model.damping);
                     param_slider(ui, "degradation intensity", &mut state.degrade_intensity_value, &mut state.model.degrade_intensity);
-                    param_slider(ui, "Gain Right", &mut state.degrade_speed_value, &mut state.model.degrade_speed);
+                    param_slider(ui, "degradation speed", &mut state.degrade_speed_value, &mut state.model.degrade_speed);
                 });
 
                 // TODO: Add a way for egui-baseview to send a closure that runs every frame without always
