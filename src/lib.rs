@@ -16,7 +16,7 @@ use dsp::{Allpass, DegradedDelay};
 baseplug::model! {
     #[derive(Debug, Serialize, Deserialize)]
     struct ReverbModel {
-        #[model(min = 0.0, max = 1.0)]
+        #[model(min = 0.4, max = 0.998)]
         #[parameter(name = "g")]
         g: f32,
         #[model(min = 0.0, max = 1.0)]
@@ -28,6 +28,9 @@ baseplug::model! {
         #[model(min = 0.0, max = 1.0)]
         #[parameter(name = "degrade_speed")]
         degrade_speed: f32,
+        #[model(min = 0.0, max = 1.0)]
+        #[parameter(name = "glitch_enum")]
+        glitch_enum: f32,
     }
 }
 
@@ -38,6 +41,7 @@ impl Default for ReverbModel {
             damping: 0.0,
             degrade_intensity: 0.0,
             degrade_speed: 0.0,
+            glitch_enum: 0.0,
         }
     }
 }
@@ -95,14 +99,21 @@ impl Plugin for Reverb {
         let output = &mut ctx.outputs[0].buffers;
 
         for i in 0..ctx.nframes {
-            self.allpass_one_l.set_g(model.g[i]);
-            self.allpass_two_l.set_g(-model.g[i]);
-            self.allpass_three_l.set_g(model.g[i]);
+            let mut g = model.g[i];
+            if model.glitch_enum[i] > 0.7 {
+                //lfo stuff
+            } else if model.glitch_enum[i] > 0.3 {
+                g = 1.0
+            }
 
-            self.delay_one_l.set_feedback(model.g[i]);
-            self.delay_two_l.set_feedback(model.g[i]);
-            self.delay_three_l.set_feedback(model.g[i]);
-            self.delay_four_l.set_feedback(model.g[i]);
+            self.allpass_one_l.set_g(g);
+            self.allpass_two_l.set_g(-g);
+            self.allpass_three_l.set_g(g);
+
+            self.delay_one_l.set_feedback(g);
+            self.delay_two_l.set_feedback(g);
+            self.delay_three_l.set_feedback(g);
+            self.delay_four_l.set_feedback(g);
 
             self.delay_one_l.set_a(1.0 - model.damping[i]);
             self.delay_two_l.set_a(1.0 - model.damping[i]);
@@ -119,14 +130,14 @@ impl Plugin for Reverb {
             self.delay_three_l.set_ratio(model.degrade_speed[i]);
             self.delay_four_l.set_ratio(model.degrade_speed[i]);
 
-            self.allpass_one_r.set_g(model.g[i]);
-            self.allpass_two_r.set_g(-model.g[i]);
-            self.allpass_three_r.set_g(model.g[i]);
+            self.allpass_one_r.set_g(g);
+            self.allpass_two_r.set_g(g);
+            self.allpass_three_r.set_g(g);
 
-            self.delay_one_r.set_feedback(model.g[i]);
-            self.delay_two_r.set_feedback(model.g[i]);
-            self.delay_three_r.set_feedback(model.g[i]);
-            self.delay_four_r.set_feedback(model.g[i]);
+            self.delay_one_r.set_feedback(g);
+            self.delay_two_r.set_feedback(g);
+            self.delay_three_r.set_feedback(g);
+            self.delay_four_r.set_feedback(g);
 
             self.delay_one_r.set_a(1.0 - model.damping[i]);
             self.delay_two_r.set_a(1.0 - model.damping[i]);
@@ -153,17 +164,17 @@ impl Plugin for Reverb {
                 + self.delay_three_r.process_sample(input[0][i])
                 + self.delay_four_r.process_sample(input[0][i]))
                 / 2.0;
-            output[0][i] = ((self.allpass_three_l.process_sample(
+            output[0][i] = (((self.allpass_three_l.process_sample(
                 self.allpass_two_l
                     .process_sample(self.allpass_one_l.process_sample(delays_summed_l)),
             )) * model.g[i])
-                + input[0][i];
+                + input[0][i]).clamp(-1.0, 1.0);
             
-                output[1][i] = ((self.allpass_three_r.process_sample(
+                output[1][i] = (((self.allpass_three_r.process_sample(
                     self.allpass_two_r
                         .process_sample(self.allpass_one_r.process_sample(delays_summed_r)),
                 )) * model.g[i])
-                    + input[1][i];
+                    + input[1][i]).clamp(-1.0, 1.0);
         }
     }
 }
@@ -178,7 +189,7 @@ impl baseplug::PluginUI for Reverb {
     fn ui_open(parent: &impl HasRawWindowHandle, model: <Self::Model as Model<Self>>::UI) -> WindowOpenResult<Self::Handle> {
         let settings = Settings {
             window: WindowOpenOptions {
-                title: String::from("egui-baseplug-examples gain"),
+                title: String::from("schroeder_one"),
                 size: Size::new(Self::ui_size().0 as f64, Self::ui_size().1 as f64),
                 scale: WindowScalePolicy::SystemScaleFactor,
             },
@@ -225,17 +236,44 @@ impl baseplug::PluginUI for Reverb {
                     };
                 };
 
+                
+                #[derive(PartialEq)]
+                enum GlitchEnum { Not, Indeed, Lfo }
+                let mut glitch_state = GlitchEnum::Not;
+
                 // Sync text values if there was automation.
                 update_value_text(&mut state.g_value, &state.model.g);
                 update_value_text(&mut state.damping_value, &state.model.damping);
                 update_value_text(&mut state.degrade_intensity_value, &state.model.degrade_intensity);
                 update_value_text(&mut state.degrade_speed_value, &state.model.degrade_speed);
 
-                egui::Window::new("egui-baseplug gain demo").show(&egui_ctx, |ui| {
+                egui::CentralPanel::default().show(&egui_ctx, |ui| {
                     param_slider(ui, "sort of length", &mut state.g_value, &mut state.model.g);
                     param_slider(ui, "damping", &mut state.damping_value, &mut state.model.damping);
                     param_slider(ui, "degradation intensity", &mut state.degrade_intensity_value, &mut state.model.degrade_intensity);
                     param_slider(ui, "degradation speed", &mut state.degrade_speed_value, &mut state.model.degrade_speed);
+                    if ui.radio_value(&mut glitch_state, GlitchEnum::Not, "Off").changed() {
+                        match glitch_state {
+                            GlitchEnum::Not => state.model.glitch_enum.set_from_normalized(0.0),
+                            GlitchEnum::Indeed => state.model.glitch_enum.set_from_normalized(0.31),
+                            GlitchEnum::Lfo => state.model.glitch_enum.set_from_normalized(0.71),
+                        }
+                    }
+                    if ui.radio_value(&mut glitch_state, GlitchEnum::Indeed, "On").changed() {
+                        match glitch_state {
+                            GlitchEnum::Not => state.model.glitch_enum.set_from_normalized(0.0),
+                            GlitchEnum::Indeed => state.model.glitch_enum.set_from_normalized(0.31),
+                            GlitchEnum::Lfo => state.model.glitch_enum.set_from_normalized(0.71),
+                        }
+                    }
+                    if ui.radio_value(&mut glitch_state, GlitchEnum::Lfo, "Wacky").changed() {
+                        match glitch_state {
+                            GlitchEnum::Not => state.model.glitch_enum.set_from_normalized(0.0),
+                            GlitchEnum::Indeed => state.model.glitch_enum.set_from_normalized(0.31),
+                            GlitchEnum::Lfo => state.model.glitch_enum.set_from_normalized(0.71),
+                        }
+                    }
+
                 });
 
                 // TODO: Add a way for egui-baseview to send a closure that runs every frame without always
