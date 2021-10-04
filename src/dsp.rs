@@ -178,3 +178,20 @@ impl Allpass {
         (input * -self.g) + (self.delay.process_sample(input) * (1.0 - self.g.powi(2)))
     }
 }
+
+pub struct Lfo {
+    freq: f32,
+    phase: f32,
+}
+
+impl Lfo {
+    pub fn new(freq: f32) -> Self {
+        Self { freq, phase: 0.0 }
+    }
+
+    pub fn next_sample(&mut self, sample_rate: f32) -> f32 {
+        let output = (self.phase * std::f32::consts::TAU).powi(2).sin();
+        self.phase = (self.phase + self.freq / sample_rate).fract();
+        output
+    }
+}
